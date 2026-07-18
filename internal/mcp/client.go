@@ -27,8 +27,10 @@ type CallResult struct {
 
 type rpcResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
-	Result  json.RawMessage `json:"result"`
+	ID      *int64          `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
 }
 type rpcError struct {
@@ -87,18 +89,24 @@ func (c *Client) request(ctx context.Context, method string, params any, dst any
 	result := make(chan rpcResponse, 1)
 	errch := make(chan error, 1)
 	go func() {
-		line, err := c.out.ReadBytes('\n')
-		if err != nil {
-			errch <- err
+		for {
+			line, err := c.out.ReadBytes('\n')
+			if err != nil {
+				errch <- err
+				return
+			}
+			var r rpcResponse
+			if err := json.Unmarshal(line, &r); err != nil {
+				errch <- err
+				return
+			}
+			if r.ID == nil {
+				// Ignore server notifications and continue until our response arrives.
+				continue
+			}
+			result <- r
 			return
 		}
-		var r rpcResponse
-		err = json.Unmarshal(line, &r)
-		if err != nil {
-			errch <- err
-			return
-		}
-		result <- r
 	}()
 	select {
 	case <-ctx.Done():
@@ -116,12 +124,31 @@ func (c *Client) request(ctx context.Context, method string, params any, dst any
 	}
 }
 
+func (c *Client) notify(method string, params any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return errors.New("mcp client is closed")
+	}
+	req := map[string]any{"jsonrpc": "2.0", "method": method}
+	if params != nil {
+		req["params"] = params
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+	_, err = c.in.Write(b)
+	return err
+}
+
 func (c *Client) Initialize(ctx context.Context) error {
 	var result map[string]any
 	if err := c.request(ctx, "initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "m365-native", "version": "0.1.0"}}, &result); err != nil {
 		return err
 	}
-	return nil
+	return c.notify("notifications/initialized", nil)
 }
 func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 	var r struct {
