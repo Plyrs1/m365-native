@@ -115,7 +115,7 @@ func (c *Client) ChatWithDelta(ctx context.Context, acc Account, req Request, on
 	_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 	_ = conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
 
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{\"protocol\":\"json\",\"version\":1}`+rs)); err != nil {
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"protocol":"json","version":1}`+rs)); err != nil {
 		return Result{}, fmt.Errorf("handshake send: %w", err)
 	}
 	if _, _, err := conn.ReadMessage(); err != nil {

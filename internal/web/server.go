@@ -72,6 +72,7 @@ func (s *Server) Routes() http.Handler {
 	m.HandleFunc("/api/admin/debug/detail", s.debugDetail)
 	m.HandleFunc("/api/health", s.health)
 	m.HandleFunc("/api/accounts", s.accounts)
+	m.HandleFunc("/api/accounts/refresh", s.refreshAccount)
 	m.HandleFunc("/api/accounts/delete", s.deleteAccount)
 	m.HandleFunc("/api/auth/start", s.startPKCE)
 	m.HandleFunc("/api/auth/callback", s.callbackPKCE)
@@ -277,6 +278,29 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	jsonOut(w, map[string]any{"accounts": out})
+}
+
+func (s *Server) refreshAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ID) == "" {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	acc, err := s.tokens.EnsureValid(strings.TrimSpace(body.ID))
+	if err != nil {
+		writeOpenAIError(w, http.StatusBadGateway, "token_refresh_error", err.Error())
+		return
+	}
+	jsonOut(w, map[string]any{"status": "refreshed", "account": map[string]any{
+		"id": acc.ID, "email": acc.Email, "displayName": acc.DisplayName,
+		"status": acc.Status, "expiresAt": acc.ExpiresAt, "updatedAt": acc.UpdatedAt,
+	}})
 }
 
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
