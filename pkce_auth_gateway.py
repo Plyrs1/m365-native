@@ -290,7 +290,7 @@ def complete_with_callback(callback: str, expect_state: Optional[str] = None) ->
 
 
 HTML_PAGE = """<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -329,37 +329,37 @@ HTML_PAGE = """<!doctype html>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>M365 Copilot 浏览器授权网关</h1>
-      <p>非设备码。使用 Office Copilot 官方 client：<code>c0ab8ce9-e9a0-42e7-b064-33d422df41f1</code></p>
-      <p class="muted">登录后浏览器会跳到 <code>oauth2/nativeclient?code=...</code>。请立刻复制完整地址粘贴到下方（有时会再跳到 wrongplace）。</p>
+      <h1>M365 Copilot Browser Auth Gateway</h1>
+      <p>No device code flow. Uses the official Office Copilot client: <code>c0ab8ce9-e9a0-42e7-b064-33d422df41f1</code></p>
+      <p class="muted">After login, the browser redirects to <code>oauth2/nativeclient?code=...</code>. Copy the full URL immediately and paste it below (it may briefly bounce to wrongplace).</p>
       <div class="row">
-        <a class="btn" id="loginBtn" href="#" target="_blank" rel="noreferrer">1. 打开 Microsoft 登录</a>
-        <button class="secondary" onclick="refreshStatus()">刷新状态</button>
-        <button class="danger" onclick="resetSession()">重置会话</button>
+        <a class="btn" id="loginBtn" href="#" target="_blank" rel="noreferrer">1. Open Microsoft Login</a>
+        <button class="secondary" onclick="refreshStatus()">Refresh Status</button>
+        <button class="danger" onclick="resetSession()">Reset Session</button>
       </div>
     </div>
 
     <div class="card">
-      <h2>2. 粘贴回调地址 / 授权码</h2>
-      <textarea id="callback" placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=...&state=...&#10;或者只贴 code= 后面的授权码"></textarea>
+      <h2>2. Paste Callback URL / Auth Code</h2>
+      <textarea id="callback" placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=...&state=...&#10;Or paste just the code= value"></textarea>
       <div class="row">
-        <button onclick="submitCallback()">提交并换 token</button>
+        <button onclick="submitCallback()">Submit &amp; Exchange Token</button>
       </div>
       <p id="msg" class="muted"></p>
     </div>
 
     <div class="card">
-      <h2>当前状态</h2>
+      <h2>Status</h2>
       <div id="status" class="muted">loading...</div>
     </div>
 
     <div class="card">
-      <h2>说明</h2>
+      <h2>Instructions</h2>
       <ol>
-        <li>点“打开 Microsoft 登录”，用有 Copilot 权限的账号登录。</li>
-        <li>登录完成后，地址栏出现 <code>.../oauth2/nativeclient?code=...</code> 时立刻复制整段 URL。</li>
-        <li>粘贴到上面提交。网关会用 PKCE verifier 换 access/refresh token 并落盘。</li>
-        <li>也可用 API：<code>POST /api/exchange</code>，body: <code>{"callback":"..."}</code></li>
+        <li>Click "Open Microsoft Login" and sign in with an account that has Copilot access.</li>
+        <li>After signing in, when the address bar shows <code>.../oauth2/nativeclient?code=...</code>, copy the full URL immediately.</li>
+        <li>Paste it above and submit. The gateway exchanges the code for access/refresh tokens using PKCE verifier and saves them to disk.</li>
+        <li>Alternatively, use the API: <code>POST /api/exchange</code> with body: <code>{"callback":"..."}</code></li>
       </ol>
     </div>
   </div>
@@ -371,7 +371,7 @@ HTML_PAGE = """<!doctype html>
       const box = document.getElementById('status');
       if (data.completed) {
         const s = data.result_summary;
-        box.innerHTML = `<div class="ok">✅ 已完成</div>
+        box.innerHTML = `<div class="ok">✅ Complete</div>
           <div class="kv" style="margin-top:10px">
             <div>email</div><div>${s.email || ''}</div>
             <div>appid</div><div>${s.appid || ''}</div>
@@ -382,20 +382,20 @@ HTML_PAGE = """<!doctype html>
       } else if (data.error) {
         box.innerHTML = `<div class="err">❌ ${data.error}</div><pre>${data.auth_url}</pre>`;
       } else {
-        box.innerHTML = `<div>等待回调...</div>
+        box.innerHTML = `<div>Waiting for callback...</div>
           <div class="kv" style="margin-top:10px">
             <div>client</div><div><code>${data.client_id}</code></div>
             <div>redirect</div><div><code>${data.redirect_uri}</code></div>
             <div>state</div><div><code>${data.state}</code></div>
           </div>
-          <p class="muted">登录 URL：</p>
+          <p class="muted">Login URL:</p>
           <pre>${data.auth_url}</pre>`;
       }
     }
     async function submitCallback() {
       const callback = document.getElementById('callback').value.trim();
       const msg = document.getElementById('msg');
-      msg.textContent = '提交中...';
+      msg.textContent = 'Submitting...';
       msg.className = 'muted';
       try {
         const res = await fetch('/api/exchange', {
@@ -405,18 +405,18 @@ HTML_PAGE = """<!doctype html>
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || JSON.stringify(data));
-        msg.textContent = '成功：' + (data.email || '') + ' / appid=' + (data.appid || '');
+        msg.textContent = 'Success: ' + (data.email || '') + ' / appid=' + (data.appid || '');
         msg.className = 'ok';
         await refreshStatus();
       } catch (e) {
-        msg.textContent = '失败：' + e.message;
+        msg.textContent = 'Failed: ' + e.message;
         msg.className = 'err';
       }
     }
     async function resetSession() {
       await fetch('/api/reset', {method: 'POST'});
       document.getElementById('callback').value = '';
-      document.getElementById('msg').textContent = '已重置';
+      document.getElementById('msg').textContent = 'Session reset';
       await refreshStatus();
     }
     refreshStatus();

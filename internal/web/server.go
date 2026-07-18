@@ -462,7 +462,7 @@ func (s *Server) callbackPKCE(w http.ResponseWriter, r *http.Request) {
 	// displaying a raw JSON response. Keep JSON for the manual/API flow.
 	if strings.HasPrefix(auth.RedirectURI(), "http://127.0.0.1:") || strings.HasPrefix(auth.RedirectURI(), "http://localhost:") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!doctype html><meta charset="utf-8"><title>M365 Native 授权完成</title><style>body{font:16px system-ui;text-align:center;padding:15vh 20px;color:#242424}main{max-width:520px;margin:auto}h1{font-size:26px}</style><main><h1>授权完成</h1><p>账号已经自动加入账号池，可以关闭此页面。</p><script>if(window.opener){window.opener.postMessage({type:"m365-auth-complete"},window.location.origin);setTimeout(()=>window.close(),300)}</script></main>`)
+		fmt.Fprint(w, `<!doctype html><meta charset="utf-8"><title>M365 Native Authorization Complete</title><style>body{font:16px system-ui;text-align:center;padding:15vh 20px;color:#242424}main{max-width:520px;margin:auto}h1{font-size:26px}</style><main><h1>Authorization Complete</h1><p>The account has been automatically added to the account pool. You may close this page.</p><script>if(window.opener){window.opener.postMessage({type:"m365-auth-complete"},window.location.origin);setTimeout(()=>window.close(),300)}</script></main>`)
 		return
 	}
 	jsonOut(w, map[string]any{
@@ -996,7 +996,7 @@ APPLICATION_REQUEST_AND_EVIDENCE:
 			delta := map[string]any{"content": content}
 			if firstDelta {
 				firstDelta = false
-				delta = map[string]any{"content": nil, "reasoning_content": "正在分析请求并准备回答……"}
+				delta = map[string]any{"content": nil, "reasoning_content": "Analyzing the request and preparing a response…"}
 			}
 			chunk := map[string]any{"id": id, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": model, "choices": []map[string]any{{"index": 0, "delta": delta}}}
 			fmt.Fprintf(w, "data: %s\n\n", mustJSON(chunk))

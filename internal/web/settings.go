@@ -117,45 +117,45 @@ func firstNonEmptySetting(values ...string) string {
 
 func validateSettings(v runtimeSettings) error {
 	if v.MaxToolCallsPerTurn < 1 || v.MaxToolCallsPerTurn > 64 {
-		return fmt.Errorf("每轮工具调用数必须为 1-64")
+		return fmt.Errorf("max tool calls per turn must be 1-64")
 	}
 	if v.MaxToolRounds < 1 || v.MaxToolRounds > 512 {
-		return fmt.Errorf("最大工具轮次必须为 1-512")
+		return fmt.Errorf("max tool rounds must be 1-512")
 	}
 	if v.ContextWindow < 1024 {
-		return fmt.Errorf("上下文窗口不能小于 1024")
+		return fmt.Errorf("context window must be at least 1024")
 	}
 	if v.MaxOutputTokens < 1 || v.MaxOutputTokens >= v.ContextWindow {
-		return fmt.Errorf("最大输出必须大于 0 且小于上下文窗口")
+		return fmt.Errorf("max output tokens must be > 0 and < context window")
 	}
 	if v.ChatTimeoutSeconds < 5 || v.ChatTimeoutSeconds > 3600 {
-		return fmt.Errorf("聊天超时必须为 5-3600 秒")
+		return fmt.Errorf("chat timeout must be 5-3600 seconds")
 	}
 	if v.ImageTimeoutSeconds < 5 || v.ImageTimeoutSeconds > 3600 {
-		return fmt.Errorf("图片超时必须为 5-3600 秒")
+		return fmt.Errorf("image timeout must be 5-3600 seconds")
 	}
 	if v.LogLevel != "silent" && v.LogLevel != "error" && v.LogLevel != "warn" && v.LogLevel != "info" && v.LogLevel != "debug" {
-		return fmt.Errorf("日志等级必须为 silent、error、warn、info 或 debug")
+		return fmt.Errorf("log level must be one of: silent, error, warn, info, debug")
 	}
 	seen := make(map[string]struct{}, len(v.ModelMappings))
 	for _, mapping := range v.ModelMappings {
 		model := strings.TrimSpace(mapping.PublicModel)
 		if !publicModelID.MatchString(model) {
-			return fmt.Errorf("公开模型 ID 只能包含字母、数字、点、下划线或连字符，且长度为 1-128")
+			return fmt.Errorf("public model ID must contain only letters, digits, dots, underscores, or hyphens, and be 1-128 characters")
 		}
 		key := strings.ToLower(model)
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("公开模型 ID %q 重复", model)
+			return fmt.Errorf("duplicate public model ID %q", model)
 		}
 		seen[key] = struct{}{}
 		if !validUpstreamTone(strings.TrimSpace(mapping.UpstreamTone)) {
-			return fmt.Errorf("上游 tone %q 不受支持", mapping.UpstreamTone)
+			return fmt.Errorf("unsupported upstream tone %q", mapping.UpstreamTone)
 		}
 		if strings.TrimSpace(mapping.DisplayName) == "" {
-			return fmt.Errorf("公开模型 %q 缺少显示名称", model)
+			return fmt.Errorf("public model %q is missing a display name", model)
 		}
 		if _, err := normalizeReasoningEffort(mapping.DefaultReasoningLevel); err != nil || strings.TrimSpace(mapping.DefaultReasoningLevel) == "" {
-			return fmt.Errorf("公开模型 %q 的默认推理级别无效", model)
+			return fmt.Errorf("invalid default reasoning level for public model %q", model)
 		}
 	}
 	return nil
