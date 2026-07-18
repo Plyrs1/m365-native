@@ -41,6 +41,14 @@ func (r responsesRequest) openAI() (oaiReq, error) {
 			}
 			typ, _ := m["type"].(string)
 			switch typ {
+			case "function_call_progress":
+				// Progress is deliberately not converted into an assistant/tool
+				// message. It is transport metadata from a long-running client-side
+				// executor and must not trigger a model turn or tool completion.
+				if _, ok := parseToolProgress(m); !ok {
+					return o, fmt.Errorf("invalid function_call_progress")
+				}
+				continue
 			case "function_call_output":
 				id, _ := m["call_id"].(string)
 				o.Messages = append(o.Messages, oaiMsg{Role: "tool", ToolCallID: id, Content: m["output"]})

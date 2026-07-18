@@ -25,6 +25,9 @@ func writeResponsesResult(w http.ResponseWriter, model string, stream bool, src 
 	msg, _ := openAIChoice(src)
 	var output []any
 	if calls, ok := msg["tool_calls"].([]any); ok {
+		if len(calls) > 0 {
+			output = append(output, map[string]any{"type": "message", "id": "msg_" + uuid.NewString(), "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "我先确认必要的外部信息，然后调用相关工具。", "annotations": []any{}}}})
+		}
 		for _, raw := range calls {
 			tc, _ := raw.(map[string]any)
 			fn, _ := tc["function"].(map[string]any)

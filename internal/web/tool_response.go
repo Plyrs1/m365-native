@@ -19,10 +19,10 @@ func toolPlanSummary(calls []detectedToolCall) string {
 	return "我先确认必要的外部信息，然后调用：" + strings.Join(names, "、") + "。"
 }
 
-func writeToolResponse(w http.ResponseWriter, id, model string, stream bool, calls []detectedToolCall, res chathub.Result) error {
+func writeToolResponse(w http.ResponseWriter, id, model string, stream bool, calls []detectedToolCall, res chathub.Result, preambleSent ...bool) error {
 	toolCalls := toolCallMaps(calls)
 	summary := toolPlanSummary(calls)
-	msg := map[string]any{"role": "assistant", "content": nil, "reasoning_content": summary, "tool_calls": toolCalls}
+	msg := map[string]any{"role": "assistant", "content": summary, "reasoning_content": summary, "tool_calls": toolCalls}
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -37,7 +37,9 @@ func writeToolResponse(w http.ResponseWriter, id, model string, stream bool, cal
 		base := func(delta map[string]any, finish any) map[string]any {
 			return map[string]any{"id": id, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": model, "choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}}}
 		}
-		emit(base(map[string]any{"role": "assistant", "content": nil, "reasoning_content": summary}, nil))
+		if len(preambleSent) == 0 || !preambleSent[0] {
+			emit(base(map[string]any{"role": "assistant", "content": summary, "reasoning_content": summary}, nil))
+		}
 		for i, tc := range calls {
 			emit(base(map[string]any{"tool_calls": []any{map[string]any{"index": i, "id": tc.ID, "type": "function", "function": map[string]any{"name": tc.Name, "arguments": string(tc.Arguments)}}}}, nil))
 		}

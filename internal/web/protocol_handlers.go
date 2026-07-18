@@ -63,7 +63,11 @@ func (s *Server) streamResponsesAdapter(w http.ResponseWriter, r *http.Request, 
 	var text strings.Builder
 	messageID := "msg_" + uuid.NewString()
 	contentID := "txt_" + uuid.NewString()
-	type tcState struct{ ID, Name, Args string }
+	textStarted := false
+	type tcState struct {
+		ID, Name, Args string
+		ItemID         string
+	}
 	calls := map[int]*tcState{}
 	scanner := bufio.NewScanner(pr)
 	scanner.Buffer(make([]byte, 4096), 2<<20)
@@ -84,6 +88,11 @@ func (s *Server) streamResponsesAdapter(w http.ResponseWriter, r *http.Request, 
 		delta, _ := choice["delta"].(map[string]any)
 		if content, ok := delta["content"].(string); ok && content != "" {
 			text.WriteString(content)
+			if !textStarted {
+				textStarted = true
+				emit("response.output_item.added", map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "in_progress", "content": []any{map[string]any{"type": "output_text", "id": contentID, "text": "", "annotations": []any{}}}}})
+			}
+			emit("response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": messageID, "delta": content})
 		}
 		if rawCalls, ok := delta["tool_calls"].([]any); ok {
 			for _, raw := range rawCalls {
@@ -91,8 +100,9 @@ func (s *Server) streamResponsesAdapter(w http.ResponseWriter, r *http.Request, 
 				idx := int(tc["index"].(float64))
 				st := calls[idx]
 				if st == nil {
-					st = &tcState{}
+					st = &tcState{ItemID: "fc_" + uuid.NewString()}
 					calls[idx] = st
+					emit("response.output_item.added", map[string]any{"type": "response.output_item.added", "output_index": idx, "item": map[string]any{"type": "function_call", "id": st.ItemID, "call_id": "", "name": "", "arguments": "", "status": "in_progress"}})
 				}
 				if v, ok := tc["id"].(string); ok {
 					st.ID = v
@@ -103,6 +113,7 @@ func (s *Server) streamResponsesAdapter(w http.ResponseWriter, r *http.Request, 
 				}
 				if v, ok := fn["arguments"].(string); ok {
 					st.Args += v
+					emit("response.function_call_arguments.delta", map[string]any{"type": "response.function_call_arguments.delta", "output_index": idx, "item_id": st.ItemID, "delta": v})
 				}
 			}
 		}
@@ -130,8 +141,10 @@ func (s *Server) streamResponsesAdapter(w http.ResponseWriter, r *http.Request, 
 	} else {
 		item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "in_progress", "content": []any{map[string]any{"type": "output_text", "id": contentID, "text": "", "annotations": []any{}}}}
 		output = append(output, item)
-		emit("response.output_item.added", map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item})
-		emit("response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": messageID, "delta": text.String()})
+		if !textStarted {
+			emit("response.output_item.added", map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item})
+			emit("response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": messageID, "delta": text.String()})
+		}
 		emit("response.output_text.done", map[string]any{"type": "response.output_text.done", "output_index": 0, "content_index": 0, "item_id": messageID, "text": text.String()})
 		item["status"] = "completed"
 		item["content"] = []any{map[string]any{"type": "output_text", "id": contentID, "text": text.String(), "annotations": []any{}}}

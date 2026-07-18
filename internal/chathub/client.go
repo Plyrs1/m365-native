@@ -40,6 +40,21 @@ type Request struct {
 	Started bool
 }
 
+// StreamEvent is the protocol-neutral event exposed while ChatHub is still
+// producing a response. Text events are safe to show immediately; progress and
+// tool events are normally buffered by protocol adapters.
+type StreamEvent struct {
+	Kind        string
+	Text        string
+	MessageType string
+	ContentType string
+	ToolName    string
+	Arguments   json.RawMessage
+	Raw         json.RawMessage
+}
+
+type StreamHandler func(StreamEvent) error
+
 type Result struct {
 	Text           string
 	ConversationID string
@@ -76,11 +91,28 @@ func (c *Client) Chat(ctx context.Context, acc Account, req Request) (Result, er
 	return c.ChatWithDelta(ctx, acc, req, nil)
 }
 
+// ChatWithEvents is the compatibility entry point for the full event stream.
+// The initial implementation exposes every upstream text delta immediately;
+// the existing ChatWithDelta path remains the source of truth until the
+// SignalR frame parser is migrated to emit progress/tool events as well.
+func (c *Client) ChatWithEvents(ctx context.Context, acc Account, req Request, handler StreamHandler) (Result, error) {
+	return c.chatWithHandlers(ctx, acc, req, func(text string) error {
+		if handler == nil {
+			return nil
+		}
+		return handler(StreamEvent{Kind: "text", Text: text})
+	}, handler)
+}
+
 // ChatWithDelta preserves Chat semantics while exposing upstream text deltas as
 // soon as SignalR delivers them. onDelta must return quickly; returning an error
 // cancels the request. Full snapshot messages are retained for final-result
 // reconstruction but are not emitted as deltas, preventing duplicate text.
 func (c *Client) ChatWithDelta(ctx context.Context, acc Account, req Request, onDelta func(string) error) (Result, error) {
+	return c.chatWithHandlers(ctx, acc, req, onDelta, nil)
+}
+
+func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request, onDelta func(string) error, onEvent StreamHandler) (Result, error) {
 	if acc.AccessToken == "" || acc.OID == "" || acc.TID == "" {
 		return Result{}, fmt.Errorf("missing access token / oid / tid")
 	}
@@ -139,10 +171,20 @@ func (c *Client) ChatWithDelta(ctx context.Context, acc Account, req Request, on
 		}
 		return nil
 	}
+	emitSnapshot := func(snapshot string) error {
+		if snapshot == "" {
+			return nil
+		}
+		if streamedText != "" && strings.HasPrefix(snapshot, streamedText) {
+			return emitDelta(strings.TrimPrefix(snapshot, streamedText))
+		}
+		return emitDelta(snapshot)
+	}
 	var final string
 	var throttling any
 	var rawResult string
 	var events []json.RawMessage
+	seenStreamTools := map[string]bool{}
 
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
@@ -185,9 +227,35 @@ func (c *Client) ChatWithDelta(ctx context.Context, acc Account, req Request, on
 					if !ok {
 						continue
 					}
-					if w, ok := arg["writeAtCursor"].(string); ok && w != "" {
+					msgs, _ := arg["messages"].([]any)
+					if onEvent != nil {
+						for _, ev := range extractToolEvents(arg, seenStreamTools) {
+							if err := onEvent(ev); err != nil {
+								return Result{}, err
+							}
+						}
+
+						for _, ev := range classifyUpdateMessages(msgs) {
+							ev.Raw = eventRaw(arg)
+							if ev.Kind != "text" {
+								if err := onEvent(ev); err != nil {
+									return Result{}, err
+								}
+							}
+						}
+					}
+					toolFrame := false
+					for _, mraw := range msgs {
+						m, _ := mraw.(map[string]any)
+						mt, _ := m["messageType"].(string)
+						ct, _ := m["contentType"].(string)
+						if mt == "Progress" || ct == "SearchResults" || ct == "Code" || ct == "ToolCall" {
+							toolFrame = true
+						}
+					}
+					if w, ok := arg["writeAtCursor"].(string); ok && w != "" && !toolFrame {
 						deltas = append(deltas, w)
-						if err := emitDelta(w); err != nil {
+						if err := emitSnapshot(w); err != nil {
 							return Result{}, err
 						}
 					}
@@ -207,10 +275,8 @@ func (c *Client) ChatWithDelta(ctx context.Context, acc Account, req Request, on
 								// ChatHub often sends the first visible text as a full snapshot,
 								// followed by cursor deltas. Emit only the unseen suffix.
 								deltas = append(deltas, text)
-								if strings.HasPrefix(text, streamedText) {
-									if err := emitDelta(strings.TrimPrefix(text, streamedText)); err != nil {
-										return Result{}, err
-									}
+								if err := emitSnapshot(text); err != nil {
+									return Result{}, err
 								}
 							}
 						}

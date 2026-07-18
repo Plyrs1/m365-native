@@ -704,6 +704,87 @@ func (s *Server) openaiChat(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(s.settings.get().ChatTimeoutSeconds)*time.Second)
 	defer cancel()
 	account := chathub.Account{AccessToken: acc.AccessToken, OID: acc.OID, TID: acc.TID}
+	// The stream is opened by the actual response path below. Do not emit a
+	// tool preamble here: a request may contain tools in its schema while still
+	// being an ordinary text question.
+	streamPrimed := false
+	// Streaming requests must not wait for the synchronous tool router. This
+	// path forwards ordinary upstream text deltas immediately; tool routing for
+	// non-streaming requests remains below until the event-level tool protocol
+	// is available end-to-end.
+	if body.Stream && len(toolMaps) > 0 && fmt.Sprint(body.ToolChoice) != "none" {
+		// Preserve the existing validated tool router for streaming tool turns.
+		// Only fall through to text streaming when the router explicitly selects
+		// no tool; this prevents a natural-language preamble from becoming a
+		// completed assistant turn with the actual call lost.
+		routePrompt := modelToolRouterPrompt(prompt+"\n"+ledger.RouterContext(), toolMaps, body.ToolChoice)
+		routeRes, routeErr := s.chat.Chat(ctx, account, chathub.Request{Text: routePrompt, Tone: tone})
+		if routeErr != nil {
+			http.Error(w, "tool router: "+routeErr.Error(), http.StatusBadGateway)
+			return
+		}
+		calls, parsed := parseModelToolDecision(routeRes.Text, toolMaps, body.ToolChoice)
+		if !parsed {
+			repairRes, repairErr := s.chat.Chat(ctx, account, chathub.Request{Text: `Repair this tool routing output into JSON only with shape {"calls":[{"name":"function_name","arguments":{}}]}. Use {"calls":[]} if no tool is needed. OUTPUT:\n` + compactToolResult(routeRes.Text, 6000), Tone: tone})
+			if repairErr == nil {
+				calls, parsed = parseModelToolDecision(repairRes.Text, toolMaps, body.ToolChoice)
+			}
+		}
+		if parsed && len(calls) > 0 {
+			scope := fmt.Sprintf("%d:%v:stream", len(body.Messages), completedCallIDs(ledger))
+			for i := range calls {
+				calls[i].ID = scopedCallID(calls[i].Name, string(calls[i].Arguments), i, scope)
+			}
+			calls = limitToolCalls(calls, configuredToolCallLimit(s.settings))
+			if body.SessionKey != "" {
+				s.sessions.upsert(conversation{ID: body.SessionKey, AccountID: acc.ID, ConversationID: routeRes.ConversationID, SessionID: routeRes.SessionID, Title: prompt})
+			}
+			_ = writeToolResponse(w, "chatcmpl-"+uuid.NewString(), firstNonEmpty(body.Model, "m365-copilot"), true, calls, routeRes)
+			return
+		}
+	}
+	if body.Stream {
+		answerPrompt := prompt + "\n" + ledger.RouterContext() + "\nFINAL ANSWER RULE: Answer the user directly. If a tool is explicitly required, emit its structured call; otherwise return ordinary text."
+		answerReq := chathub.Request{Text: answerPrompt, Tone: tone, ConversationID: body.ConversationID, SessionID: body.SessionID, Attachments: body.Attachments, Tools: body.Tools, ToolChoice: body.ToolChoice}
+		id := "chatcmpl-" + uuid.NewString()
+		model := firstNonEmpty(body.Model, "m365-copilot")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			return
+		}
+		fmt.Fprintf(w, ": connected\n\n")
+		flusher.Flush()
+		first := true
+		var streamedTools []detectedToolCall
+		_, err := s.chat.ChatWithEvents(ctx, account, answerReq, func(ev chathub.StreamEvent) error {
+			if ev.Kind == "tool" && ev.ToolName != "" && len(ev.Arguments) > 0 {
+				streamedTools = append(streamedTools, detectedToolCall{ID: "call_" + uuid.NewString(), Name: ev.ToolName, Arguments: ev.Arguments})
+				return nil
+			}
+			if ev.Kind != "text" || ev.Text == "" {
+				return nil
+			}
+			delta := map[string]any{"content": ev.Text}
+			if first {
+				delta["role"] = "assistant"
+				first = false
+			}
+			chunk := map[string]any{"id": id, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": model, "choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": nil}}}
+			fmt.Fprintf(w, "data: %s\n\n", mustJSON(chunk))
+			flusher.Flush()
+			return nil
+		})
+		if err == nil {
+			for i, tc := range streamedTools {
+				chunk := map[string]any{"id": id, "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": model, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{"index": i, "id": tc.ID, "type": "function", "function": map[string]any{"name": tc.Name, "arguments": string(tc.Arguments)}}}}, "finish_reason": nil}}}
+				fmt.Fprintf(w, "data: %s\n\n", mustJSON(chunk))
+				flusher.Flush()
+			}
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		}
+		return
+	}
 	// Ask the upstream model to select and validate the next tool. The gateway
 	// remains tool-agnostic; it only validates and serializes the decision.
 	if len(toolMaps) > 0 && fmt.Sprint(body.ToolChoice) != "none" {
@@ -731,7 +812,7 @@ func (s *Server) openaiChat(w http.ResponseWriter, r *http.Request) {
 				calls[i].ID = scopedCallID(calls[i].Name, string(calls[i].Arguments), i, scope)
 			}
 			calls = limitToolCalls(calls, configuredToolCallLimit(s.settings))
-			_ = writeToolResponse(w, "chatcmpl-"+uuid.NewString(), firstNonEmpty(body.Model, "m365-copilot"), body.Stream, calls, routeRes)
+			_ = writeToolResponse(w, "chatcmpl-"+uuid.NewString(), firstNonEmpty(body.Model, "m365-copilot"), body.Stream, calls, routeRes, streamPrimed)
 			return
 		}
 		if fmt.Sprint(body.ToolChoice) == "required" {
@@ -748,7 +829,7 @@ APPLICATION_REQUEST_AND_EVIDENCE:
 						calls[i].ID = scopedCallID(calls[i].Name, string(calls[i].Arguments), i, scope)
 					}
 					calls = limitToolCalls(calls, configuredToolCallLimit(s.settings))
-					_ = writeToolResponse(w, "chatcmpl-"+uuid.NewString(), firstNonEmpty(body.Model, "m365-copilot"), body.Stream, calls, retryRes)
+					_ = writeToolResponse(w, "chatcmpl-"+uuid.NewString(), firstNonEmpty(body.Model, "m365-copilot"), body.Stream, calls, retryRes, streamPrimed)
 					return
 				}
 			}
