@@ -11,6 +11,7 @@ RUN addgroup -S m365 && adduser -S -G m365 m365 \
     && mkdir -p /data /app
 WORKDIR /app
 COPY --from=build /out/m365-native /app/m365-native
+COPY --from=build /src/web /app/web
 RUN chown -R m365:m365 /app /data
 USER m365
 EXPOSE 4141
