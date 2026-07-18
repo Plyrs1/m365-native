@@ -9,13 +9,16 @@ import (
 
 // responsesRequest is the OpenAI Responses API request subset supported by the gateway.
 type responsesRequest struct {
-	Model      string           `json:"model"`
-	Input      any              `json:"input"`
-	Tools      []map[string]any `json:"tools,omitempty"`
-	ToolChoice any              `json:"tool_choice,omitempty"`
-	Stream     bool             `json:"stream,omitempty"`
-	User       string           `json:"user,omitempty"`
-	Reasoning  *reasoningConfig `json:"reasoning,omitempty"`
+	Model              string           `json:"model"`
+	Input              any              `json:"input"`
+	Tools              []map[string]any `json:"tools,omitempty"`
+	ToolChoice         any              `json:"tool_choice,omitempty"`
+	Stream             bool             `json:"stream,omitempty"`
+	User               string           `json:"user,omitempty"`
+	Reasoning          *reasoningConfig `json:"reasoning,omitempty"`
+	PreviousResponseID string           `json:"previous_response_id,omitempty"`
+	Conversation       string           `json:"conversation,omitempty"`
+	NewConversation    bool             `json:"new_conversation,omitempty"`
 }
 
 func (r responsesRequest) openAI() (oaiReq, error) {

@@ -575,7 +575,7 @@ func contentToString(c any) string {
 		var b strings.Builder
 		for _, part := range v {
 			if m, ok := part.(map[string]any); ok {
-				if t, _ := m["type"].(string); t == "text" {
+				if t, _ := m["type"].(string); t == "text" || t == "input_text" || t == "output_text" {
 					if s, _ := m["text"].(string); s != "" {
 						b.WriteString(s)
 					}
