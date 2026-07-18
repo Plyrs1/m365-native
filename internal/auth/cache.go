@@ -34,6 +34,9 @@ type Store struct {
 }
 
 func CachePath() string {
+	if p := os.Getenv("M365_CONFIG"); p != "" {
+		return p
+	}
 	if p := os.Getenv("M365_TOKEN_CACHE"); p != "" {
 		return p
 	}
