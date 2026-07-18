@@ -68,7 +68,14 @@ func (r responsesRequest) openAI() (oaiReq, error) {
 				if role == "" {
 					role = "user"
 				}
-				o.Messages = append(o.Messages, oaiMsg{Role: role, Content: m["content"]})
+				// Responses input items use input_text/input_image/input_file/
+				// input_audio blocks. Keep the blocks intact so flattenPromptMessages
+				// can extract every attachment into the ChatHub payload.
+				content := m["content"]
+				if content == nil {
+					content = []any{m}
+				}
+				o.Messages = append(o.Messages, oaiMsg{Role: role, Content: content})
 			}
 		}
 	default:
