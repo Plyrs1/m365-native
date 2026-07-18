@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -807,10 +808,19 @@ func (s *Server) openaiChat(w http.ResponseWriter, r *http.Request) {
 				pending.WriteString(v[i:])
 				return nil
 			}
-			if len(v) > 8 {
-				emitText(v[:len(v)-8])
+			if runeCount := utf8.RuneCountInString(v); runeCount > 8 {
+				cut := 0
+				seen := 0
+				for i := range v {
+					if seen == runeCount-8 {
+						cut = i
+						break
+					}
+					seen++
+				}
+				emitText(v[:cut])
 				pending.Reset()
-				pending.WriteString(v[len(v)-8:])
+				pending.WriteString(v[cut:])
 			}
 			return nil
 		})
