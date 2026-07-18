@@ -4,9 +4,10 @@ import "os"
 
 // Office web Copilot first-party client (verified working with ChatHub via browser PKCE).
 // Device-code/FOCI client can still be forced via M365_CLIENT_ID.
-const DefaultClientID = "c0ab8ce9-e9a0-42e7-b064-33d422df41f1"
+const DefaultClientID = "efcea265-005c-4f0a-97c2-b3ab369c8484"
+const DefaultTenantID = "f7c4604c-0ec5-4d52-90eb-68db37632328"
 const FOCIClientID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
-const DefaultAuthority = "https://login.microsoftonline.com/common"
+const DefaultAuthority = "https://login.microsoftonline.com/f7c4604c-0ec5-4d52-90eb-68db37632328"
 
 // Loopback callback lets the browser return to the running gateway automatically.
 // Set M365_REDIRECT_URI back to the nativeclient URI when using a tenant/client
