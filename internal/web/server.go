@@ -428,6 +428,16 @@ type chatBody struct {
 
 func modelTone(model string) string {
 	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "gpt-5.2":
+		return "Gpt_5_2_Chat"
+	case "gpt-5.2-reasoning":
+		return "Gpt_5_2_Reasoning"
+	case "gpt-5.3":
+		return "Gpt_5_3_Chat"
+	case "gpt-5.4":
+		return "Gpt_5_4_Chat"
+	case "gpt-5.4-reasoning":
+		return "Gpt_5_4_Reasoning"
 	case "gpt-5.5":
 		return "Gpt_5_5_Chat"
 	case "gpt-5.5-reasoning":
@@ -438,10 +448,10 @@ func modelTone(model string) string {
 		return "Claude_Sonnet"
 	case "claude-sonnet-reasoning":
 		return "Claude_Sonnet_Reasoning"
-	case "gpt-5.4", "gpt-5.4-quick":
-		return "Gpt_5_4_"
-	case "gpt-5.3", "gpt-5.3-think-deeper":
-		return "Gpt_5_3_"
+	case "gpt-5.4-quick":
+		return "Gpt_5_4_Chat"
+	case "gpt-5.3-think-deeper":
+		return "Gpt_5_3_Chat"
 	case "quick":
 		return "Gpt_Quick"
 	case "think-deeper":

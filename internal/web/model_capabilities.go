@@ -19,6 +19,11 @@ type modelSpec struct {
 }
 
 var gatewayModels = []modelSpec{
+	{ID: "gpt-5.2", Owner: "microsoft-365", Tools: true},
+	{ID: "gpt-5.2-reasoning", Owner: "microsoft-365", Tools: true},
+	{ID: "gpt-5.3", Owner: "microsoft-365", Tools: true},
+	{ID: "gpt-5.4", Owner: "microsoft-365", Tools: true},
+	{ID: "gpt-5.4-reasoning", Owner: "microsoft-365", Tools: true},
 	{ID: "gpt-5.5", Owner: "microsoft-365", Tools: true},
 	{ID: "gpt-5.5-reasoning", Owner: "microsoft-365", Tools: true},
 	{ID: "gpt-5.6-reasoning", Owner: "microsoft-365", Tools: true},
@@ -72,6 +77,12 @@ func reasoningTone(model, effort string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case "claude", "claude-sonnet":
 		return "Claude_Sonnet_Reasoning", nil
+	case "gpt-5.2":
+		return "Gpt_5_2_Reasoning", nil
+	case "gpt-5.3":
+		return "Gpt_5_3_Reasoning", nil
+	case "gpt-5.4":
+		return "Gpt_5_4_Reasoning", nil
 	case "gpt-5.5":
 		return "Gpt_5_5_Reasoning", nil
 	case "gpt-5.6":
